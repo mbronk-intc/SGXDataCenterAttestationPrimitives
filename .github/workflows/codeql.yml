@@ -15,11 +15,9 @@ jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
     runs-on: ${{ vars.RUNNER_CODE_QL || 'ubuntu-22.04' }}
-    # runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
     timeout-minutes: ${{ (matrix.language == 'swift' && 120) || 360 }}
     permissions:
-      security-events: write  # For uploading SARIF results to code scanning API      
-      packages: read # required to fetch internal or private CodeQL packs
+      security-events: write  # For uploading SARIF results to code scanning API
       actions: read   # For telemetry/status reporting
       contents: read
       pull-requests: read
@@ -84,7 +82,7 @@ jobs:
       with:
         category: "/language:${{matrix.language}}"
         output: sarif-results
-        upload: failure-only
+        upload: ${{ vars.RUNNER_CODE_QL == '' && 'failure-only' || 'never' }}
 
     - name: Filter SARIF
       uses: advanced-security/filter-sarif@v1
@@ -97,7 +95,48 @@ jobs:
         input: sarif-results/${{ matrix.sarif-name }}.sarif
         output: sarif-results/${{ matrix.sarif-name }}.sarif
 
+    # - name: Generate offline html result if run locally
+    #   if: ${{ vars.RUNNER_CODE_QL != '' }}
+    #   uses: microsoft/sarif-actions@v0.2
+    #   with:
+    #       command: 'transform sarif-results/${{ matrix.sarif-name }}.sarif --format html --output sarif-results/codeQL_report_${{ matrix.language }}.html'
+
+    - name: Convert the results into a HTML report
+      if: ${{ vars.RUNNER_CODE_QL != '' }}
+      run: |
+        sudo apt-get install -y --no-install-recommends python3-pip 
+        pip3 install sarif-tools
+        ~/.local/bin/sarif html sarif-results/${{ matrix.sarif-name }}.sarif --output sarif-results/codeQL_report_${{ matrix.language }}.html        
+
+    - name: Upload artifacts if run locally
+      uses: actions/upload-artifact@v5
+      if: ${{ vars.RUNNER_CODE_QL != '' }}
+      with:
+        name: codeQL_sarif_results_${{ matrix.language }}
+        path: sarif-results/**    
+    
     - name: Upload SARIF
+      if: ${{ vars.RUNNER_CODE_QL == '' }}
       uses: github/codeql-action/upload-sarif@v4
       with:
         sarif_file: sarif-results/${{ matrix.sarif-name }}.sarif
+  
+  aggregate_results:  
+    name: Upload results    
+    runs-on: ${{ vars.RUNNER_CODE_QL }}
+    needs: analyze
+    if: (success() || failure()) && ${{ vars.RUNNER_CODE_QL != '' }}
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: combined-artifacts      
+
+      - name: Re-upload combined artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sarif-result
+          path: combined-artifacts
