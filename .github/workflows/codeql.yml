@@ -34,7 +34,7 @@ jobs:
           sarif-name: java
         - language: javascript-typescript  # PCCS
           build-mode: none
-          sarif-name: node
+          sarif-name: javascript
         - language: python  # Tools
           build-mode: none
           sarif-name: python
@@ -68,8 +68,9 @@ jobs:
     - name: Build
       if: matrix.build-mode == 'manual' && matrix.language == 'c-cpp'
       run: |
-        sudo apt-get update
-        sudo apt-get install -y libcurl4-openssl-dev libboost-dev libboost-system-dev libboost-thread-dev wget
+        lsb_release -a
+        sudo -E apt-get update
+        sudo -E apt-get install -y --no-install-recommends libcurl4-openssl-dev libboost-dev libboost-system-dev libboost-thread-dev wget build-essential
         QuoteGeneration/download_prebuilt.sh
         wget -r -l1 -np -nd --accept 'sgx_linux_x64_sdk_*.bin' https://download.01.org/intel-sgx/latest/linux-latest/distro/ubuntu22.04-server/
         chmod +x ./sgx_linux_x64_sdk_*.bin
