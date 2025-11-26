@@ -2,9 +2,9 @@ name: "CodeQL"
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main*" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main*" ]
   schedule:
     - cron: '35 2 * * 0'
 
@@ -14,11 +14,13 @@ permissions: read-all
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    runs-on: ubuntu-22.04
+    runs-on: ${{ vars.RUNNER_CODE_QL || 'ubuntu-22.04' }}
     timeout-minutes: ${{ (matrix.language == 'swift' && 120) || 360 }}
     permissions:
-      # required for all workflows
-      security-events: write
+      security-events: write  # For uploading SARIF results to code scanning API
+      actions: read   # For telemetry/status reporting
+      contents: read
+      pull-requests: read
 
     strategy:
       fail-fast: false
@@ -26,8 +28,20 @@ jobs:
         include:
         - language: c-cpp
           build-mode: manual
-          sarif-name: cpp
-        # CodeQL supports the following values keywords for 'language': 'c-cpp', 'csharp', 'go', 'java-kotlin', 'javascript-typescript', 'python', 'ruby', 'swift'
+          sarif-name: cpp                  
+        - language: java-kotlin
+          build-mode: none  # Java code samples (build type none only analyzes Java)
+          sarif-name: java
+        - language: javascript-typescript  # PCCS
+          build-mode: none
+          sarif-name: node
+        - language: python  # Tools
+          build-mode: none
+          sarif-name: python
+        - language: rust  # Rust bindings
+          build-mode: none
+          sarif-name: rust
+        # CodeQL supports the following values keywords for 'language': 'actions', 'c-cpp', 'csharp', 'go', 'java-kotlin', 'javascript-typescript', 'python', 'ruby', 'rust', 'swift'
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -36,7 +50,7 @@ jobs:
 
     # Initializes the CodeQL tools for scanning.
     - name: Initialize CodeQL
-      uses: github/codeql-action/init@v3
+      uses: github/codeql-action/init@v4
       with:
         languages: ${{ matrix.language }}
         build-mode: ${{ matrix.build-mode }}
@@ -52,10 +66,10 @@ jobs:
     # ℹ️ Command-line programs to run using the OS shell.
     # 📚 See https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idstepsrun
     - name: Build
-      if: matrix.build-mode == 'manual'
+      if: matrix.build-mode == 'manual' && matrix.language == 'c-cpp'
       run: |
         sudo apt-get update
-        sudo apt-get install libcurl4-openssl-dev libboost-dev libboost-system-dev libboost-thread-dev
+        sudo apt-get install -y libcurl4-openssl-dev libboost-dev libboost-system-dev libboost-thread-dev wget
         QuoteGeneration/download_prebuilt.sh
         wget -r -l1 -np -nd --accept 'sgx_linux_x64_sdk_*.bin' https://download.01.org/intel-sgx/latest/linux-latest/distro/ubuntu22.04-server/
         chmod +x ./sgx_linux_x64_sdk_*.bin
@@ -63,7 +77,7 @@ jobs:
         source ./sgxsdk/environment; make all
 
     - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v3
+      uses: github/codeql-action/analyze@v4
       with:
         category: "/language:${{matrix.language}}"
         output: sarif-results
@@ -81,7 +95,6 @@ jobs:
         output: sarif-results/${{ matrix.sarif-name }}.sarif
 
     - name: Upload SARIF
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       with:
         sarif_file: sarif-results/${{ matrix.sarif-name }}.sarif
-
