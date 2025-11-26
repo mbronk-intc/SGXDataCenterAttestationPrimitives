@@ -139,7 +139,7 @@ jobs:
         run: |
          sudo -E apt-get update && sudo -E apt-get install -y --no-install-recommends python3-pip 
          pip3 install sarif-tools
-         ~/.local/bin/sarif html combined-artifacts/*/*.sarif --output sarif-results/codeQL_report.html    
+         ~/.local/bin/sarif html combined-artifacts/*/*.sarif --output combined-artifacts/codeQL_report.html    
 
       - name: Re-upload combined artifact
         uses: actions/upload-artifact@v4
